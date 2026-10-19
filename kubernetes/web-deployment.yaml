@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+
+kind: Deployment
+
+metadata:
+  name: web-deployment
+  labels:
+    app: web-kube-monitor
+    type: frontend
+
+
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      type: frontend
+  template:
+    metadata:
+      labels:
+        app: web-kube-monitor
+        type: frontend
+    spec:
+      containers:
+        - name: web-container
+          image: web-kube-monitor
+          ports:
+            - containerPort: 3000
+
+
