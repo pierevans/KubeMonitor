@@ -1,0 +1,2 @@
+// The frontend image will be pushed to the frontend ECR repository and the backend image will be pushed to the backend ECR repository.
+// So we need to create two ECR repositories, one for the frontend and one for the backend.

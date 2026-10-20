@@ -1,4 +1,4 @@
-Services:
+services:
 
   frontend:
     image: web-kube-monitor
