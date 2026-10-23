@@ -1,0 +1,72 @@
+
+# ==========================================
+# 1. TERRAFORM
+# ==========================================
+
+# Terraform downloaded providers and modules
+.terraform/
+
+# Terraform state files
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+
+# Terraform saved plans
+*.tfplan
+*.tfplan.*
+tfplan
+tfplan.*
+
+# Terraform crash logs
+crash.log
+crash.*.log
+
+# Local Terraform variable overrides
+*.local.tfvars
+*.auto.tfvars
+*.auto.tfvars.json
+
+# Local Terraform CLI configuration
+.terraformrc
+terraform.rc
+
+# ==========================================
+# 2. AWS CREDENTIALS
+# ==========================================
+
+.aws/
+credentials
+
+# ==========================================
+# 3. ENVIRONMENT VARIABLES AND SECRETS
+# ==========================================
+
+.env
+.env.*
+!.env.example
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ==========================================
+# 4. NODE.JS / NEXT.JS
+# ==========================================
+
+node_modules/
+.next/
+dist/
+build/
+coverage/
+*.log
+
+# ==========================================
+# 5. IDE AND SYSTEM FILES
+# ==========================================
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

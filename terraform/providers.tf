@@ -1,4 +1,15 @@
+#Configure AWS provider for KubeMonitor
+
 provider "aws" {
-  alias  = "east"
-  region = "us-east-1"
+  # defined in variables.tf
+  region  = var.aws_region
+  profile = "kubemonitor"
+
+  default_tags {
+    tags = {
+      Project     = "KubeMonitor"
+      Environment = "development"
+      ManagedBy   = "Terraform"
+    }
+  }
 }
