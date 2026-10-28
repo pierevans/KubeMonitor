@@ -2,22 +2,17 @@
 # 1. FRONTEND ECR REPOSITORY
 # ==========================================
 
-resource "aws_ecr_repository" "frontend" {
-  count = local.enable_ecr ? 1 : 0
+resource "aws_ecr_repository" "web" {
 
-  name = "kubemonitor-frontend"
-  image_tag_mutability = "MUTABLE"
+  name = "kube-monitor-web-ecr-repo"
+  image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true
   }
 
-  encryption_configuration {
-    encryption_type = "AES256"
-  }
-
   tags = {
-    Name = "kubemonitor-frontend"
+    Name = "kube-monitor"
   }
 }
 
@@ -25,58 +20,70 @@ resource "aws_ecr_repository" "frontend" {
 # 2. BACKEND ECR REPOSITORY
 # ==========================================
 
-resource "aws_ecr_repository" "backend" {
-  count = local.enable_ecr ? 1 : 0
+resource "aws_ecr_repository" "api" {
 
-  name = "kubemonitor-backend"
-  image_tag_mutability = "MUTABLE"
+  name = "kube-monitor-api-ecr-repo"
+  image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true
   }
 
-  encryption_configuration {
-    encryption_type = "AES256"
-  }
-
   tags = {
-    Name = "kubemonitor-backend"
+    Name = "kube-monitor-api-ecr-repo"
   }
 }
 
-# ==========================================
-# 3. ECR LIFECYCLE POLICIES
-# ==========================================
 
-# Automatically delete untagged images
-# older than 14 days.
+# Push images to these ECR repositories, you can use the following commands:
 
-resource "aws_ecr_lifecycle_policy" "cleanup" {
+# Step 1: Verify your ECR repositories
 
-  for_each = local.enable_ecr ? {
-    frontend = aws_ecr_repository.frontend[0].name
-    backend = aws_ecr_repository.backend[0].name
-  } : {}
+/*
 
-  repository = each.value
+aws ecr describe-repositories \
+  --query 'repositories[*].[repositoryName,repositoryUri]' \
+  --output table
 
-  policy = jsonencode({
-    rules = [
-      {
-        rulePriority = 1
-        description = "Remove untagged images older than 14 days"
+Replace image in the compose.yaml with the ECR repository URI if using Docker Compose.
+Example:
+image: <ECR_REPOSITORY_URI>:latest
+*/
 
-        selection = {
-          tagStatus = "untagged"
-          countType = "sinceImagePushed"
-          countUnit= "days"
-          countNumber = 14
-        }
 
-        action = {
-          type = "expire"
-        }
-      }
-    ]
-  })
-}
+# Step 2: Authenticate Docker with ECR
+
+
+/*
+To avoid manually entering your AWS account ID, run:
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+AWS_REGION=$(aws configure get region)
+
+
+Authenticate Docker with ECR
+
+aws ecr get-login-password --region "$AWS_REGION" | \
+docker login --username AWS --password-stdin \
+"$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+
+*/
+
+# Step 3: Push images to ECR
+
+/*
+
+if not using compose.yaml for each ECR repository and image:
+
+docker build -t <image_name> .
+
+docker tag <image_name>:latest \
+"$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/<ecr_repository_name>:latest"
+docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/<ecr_repository_name>:latest"
+
+if you are using Docker Compose, you can skip the manual tagging and pushing steps.:
+docker compose build
+docker compose push
+
+Important: Both ECR repositories must already exist in AWS.
+*/
+

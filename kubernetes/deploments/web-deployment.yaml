@@ -17,6 +17,7 @@ spec:
   template:
     metadata:
       labels:
+        name: web-pod
         app: web-kube-monitor
         type: frontend
     spec:
