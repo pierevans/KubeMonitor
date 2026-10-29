@@ -1,54 +1,86 @@
+resource "aws_iam_role" "cloudwatch_agent_role" {
+  name = "kube-monitor-cloudwatch-agent-role"
 
-# # ==========================================
-# # 1. CLOUDWATCH LOG GROUP
-# # ==========================================
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
 
-# resource "aws_cloudwatch_log_group" "kubemonitor" {
-#   count = local.enable_cloudwatch ? 1 : 0
+    Statement = [
+      {
+        Effect = "Allow"
 
-#   name = "/kubemonitor/application"
-#   retention_in_days = 7
+        Principal = {
+          Service = "pods.eks.amazonaws.com"
+        }
 
-#   tags = {
-#     Name = "kubemonitor-logs"
-#   }
-# }
+        Action = [
+          "sts:AssumeRole",
+          "sts:TagSession"
+        ]
+      }
+    ]
+  })
+}
 
-# # ==========================================
-# # 2. EKS WORKER NODE COUNT ALARM
-# # ==========================================
+resource "aws_iam_role_policy_attachment" "cloudwatch_agent_policy" {
+  role = aws_iam_role.cloudwatch_agent_role.name
 
-# resource "aws_cloudwatch_metric_alarm" "node_count" {
-#   count = local.enable_cloudwatch && local.enable_eks ? 1 : 0
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
 
-#   alarm_name = "kubemonitor-low-node-count"
-#   alarm_description = "Alert when the EKS cluster has fewer than 2 worker nodes"
+resource "aws_cloudwatch_metric_alarm" "high_cpu" {
+  alarm_name        = "kube-monitor-high-node-cpu"
+  alarm_description = "EKS worker node CPU utilization exceeds 80%"
 
-#   # Where alert comes from
-#   namespace = "ContainerInsights"
+  namespace   = "ContainerInsights"
+  metric_name = "node_cpu_utilization"
 
-#   # Count nodes
-#   metric_name = "cluster_node_count"
+  dimensions = {
+    ClusterName = aws_eks_cluster.kube-monitor-eks.name
+  }
 
-#   # Check average < 2 every 5 minutes for 10 minutes
-#   statistic = "Average"
-#   period = 300
-#   evaluation_periods = 2
-#   comparison_operator = "LessThanThreshold"
-#   threshold = 2
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 5
+  threshold           = 70
+  comparison_operator = "GreaterThanThreshold"
 
-#   dimensions = {
-#     ClusterName = aws_eks_cluster.main[0].name
-#   }
+  treat_missing_data = "missing"
 
-#   treat_missing_data = "missing"
+  alarm_actions = [
+    aws_sns_topic.kube-monitor-alerts.arn
+  ]
 
-#   # Send notification only when SNS is enabled
-#   alarm_actions = local.enable_sns ? [
-#     aws_sns_topic.alerts[0].arn
-#   ] : []
+  tags = {
+    Name = "kube-monitor-high-node-cpu"
+  }
+}
 
-#   tags = {
-#     Name = "kubemonitor-node-count-alarm"
-#   }
-# }
+resource "aws_cloudwatch_metric_alarm" "unhealthy_pods" {
+  alarm_name        = "kube-monitor-unhealthy-pods"
+  alarm_description = "One or more EKS Pods have failed"
+
+  namespace   = "ContainerInsights"
+  metric_name = "pod_status_failed"
+
+  dimensions = {
+    ClusterName = aws_eks_cluster.kube-monitor-eks.name
+    Namespace   = "default"
+  }
+
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 2
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+
+  treat_missing_data = "missing"
+
+  tags = {
+    Name = "kube-monitor-unhealthy-pods"
+  }
+
+  alarm_actions = [
+    aws_sns_topic.kube-monitor-alerts.arn
+  ]
+}
+

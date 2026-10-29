@@ -1,17 +1,6 @@
 # AWS region for KubeMonitor
 aws_region = "us-east-1"
 
+# Email address for receiving KubeMonitor alerts
+alert_email = "pierre.i.konan@gmail.com"
 
-# # Replace with your own email before enabling SNS
-# alert_email = "your-email@example.com"
-
-# # Main controller to toggle AWS services
-# services = {
-#   network = false
-#   eks = false
-#   ecr = false
-#   cloudwatch = false
-#   cloudtrail = false
-#   s3 = false
-#   sns = false
-# }

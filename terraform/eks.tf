@@ -143,6 +143,37 @@ resource "aws_eks_addon" "metrics_server" {
   }
 }
 
+# Create IAM Role for CloudWatch Agent
+resource "aws_eks_addon" "pod_identity_agent" {
+  cluster_name = aws_eks_cluster.kube-monitor-eks.name
+  addon_name   = "eks-pod-identity-agent"
+
+  depends_on = [
+    aws_eks_node_group.kube-monitor-workers
+  ]
+}
+
+# Create IAM Role for CloudWatch Agent
+resource "aws_eks_addon" "cloudwatch_observability" {
+  cluster_name = aws_eks_cluster.kube-monitor-eks.name
+  addon_name   = "amazon-cloudwatch-observability"
+
+  pod_identity_association {
+    service_account = "cloudwatch-agent"
+    role_arn        = aws_iam_role.cloudwatch_agent_role.arn
+  }
+
+  depends_on = [
+    aws_eks_addon.pod_identity_agent,
+    aws_iam_role_policy_attachment.cloudwatch_agent_policy
+  ]
+
+  tags = {
+    Name = "kube-monitor-cloudwatch"
+  }
+}
+
+
 /*
 
 # Update kubeconfig for the EKS cluster
@@ -152,6 +183,8 @@ aws eks update-kubeconfig \
 
 # Apply Kubernetes manifests to the EKS cluster
   kubectl apply -f kubernetes/
+
+
 
 
 # Install the AWS Load Balancer Controller
