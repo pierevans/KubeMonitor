@@ -94,7 +94,7 @@ jobs:
       # Skipped until the component has a Dockerfile.
       - name: Docker build (no push)
         if: hashFiles(format('{0}/Dockerfile', matrix.app.path)) != ''
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.app.path }}
           platforms: linux/amd64
