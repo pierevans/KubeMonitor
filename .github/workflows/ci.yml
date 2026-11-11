@@ -112,7 +112,7 @@ jobs:
         working-directory: terraform
     steps:
       - uses: actions/checkout@v6
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "~1.10"
       # Formatting is reported as a warning, not a failure. Fix locally with:
