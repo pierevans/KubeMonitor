@@ -38,7 +38,7 @@ jobs:
       has_k8s: ${{ steps.scan.outputs.has_k8s }}
       work: ${{ steps.scan.outputs.work }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.SHA }}
 
@@ -102,7 +102,7 @@ jobs:
       matrix:
         component: ${{ fromJSON(needs.preflight.outputs.components) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.SHA }}
 
@@ -142,7 +142,7 @@ jobs:
       needs.preflight.outputs.has_k8s == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.SHA }}
 
