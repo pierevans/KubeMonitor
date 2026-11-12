@@ -1,209 +1,209 @@
-# CD: after CI passes on main, build both images, push them to ECR, and roll
-# them out to EKS. If a rollout doesn't become healthy, it is rolled back
-# automatically. Can also be started by hand from the Actions tab.
-name: Deploy
+# # CD: after CI passes on main, build both images, push them to ECR, and roll
+# # them out to EKS. If a rollout doesn't become healthy, it is rolled back
+# # automatically. Can also be started by hand from the Actions tab.
+# name: Deploy
 
-on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
-  workflow_dispatch:
+# on:
+#   workflow_run:
+#     workflows: [CI]
+#     types: [completed]
+#     branches: [main]
+#   workflow_dispatch:
 
-# Never run two deploys at once; queue the second instead of cancelling.
-concurrency:
-  group: deploy-main
-  cancel-in-progress: false
+# # Never run two deploys at once; queue the second instead of cancelling.
+# concurrency:
+#   group: deploy-main
+#   cancel-in-progress: false
 
-permissions:
-  contents: read
+# permissions:
+#   contents: read
 
-env:
-  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-  # Names match terraform/ (eks.tf, ecr.tf). ECR repo names live in
-  # .github/components.json. Override any of these with repo variables.
-  CLUSTER_NAME: ${{ vars.CLUSTER_NAME || 'kube-monitor-eks' }}
-  NAMESPACE: ${{ vars.K8S_NAMESPACE || 'default' }}
-  # The exact commit CI tested (workflow_run) or the current one (manual run).
-  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+# env:
+#   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+#   # Names match terraform/ (eks.tf, ecr.tf). ECR repo names live in
+#   # .github/components.json. Override any of these with repo variables.
+#   CLUSTER_NAME: ${{ vars.CLUSTER_NAME || 'kube-monitor-eks' }}
+#   NAMESPACE: ${{ vars.K8S_NAMESPACE || 'default' }}
+#   # The exact commit CI tested (workflow_run) or the current one (manual run).
+#   SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-jobs:
-  preflight:
-    name: Preflight checks
-    # Only continue if CI actually succeeded (or someone ran this by hand).
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
-    outputs:
-      components: ${{ steps.scan.outputs.components }}
-      has_k8s: ${{ steps.scan.outputs.has_k8s }}
-      work: ${{ steps.scan.outputs.work }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ env.SHA }}
+# jobs:
+#   preflight:
+#     name: Preflight checks
+#     # Only continue if CI actually succeeded (or someone ran this by hand).
+#     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+#     runs-on: ubuntu-latest
+#     outputs:
+#       components: ${{ steps.scan.outputs.components }}
+#       has_k8s: ${{ steps.scan.outputs.has_k8s }}
+#       work: ${{ steps.scan.outputs.work }}
+#     steps:
+#       - uses: actions/checkout@v6
+#         with:
+#           ref: ${{ env.SHA }}
 
-      # Component folders are listed in .github/components.json.
-      - id: scan
-        env:
-          HAS_AWS: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
-        run: |
-          comps=$(bash .github/scripts/detect-components.sh Dockerfile)
-          echo "components=$comps" >> "$GITHUB_OUTPUT"
-          echo "Deployable components: $comps"
-          if [ -n "$(find kubernetes -name '*.y*ml' 2>/dev/null | head -1)" ]; then
-            echo "has_k8s=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_k8s=false" >> "$GITHUB_OUTPUT"
-          fi
-          # Skip (green, with a note) instead of failing when there's nothing
-          # to ship yet or AWS access hasn't been set up yet.
-          if [ "$comps" = "[]" ] && ! [ -n "$(find kubernetes -name '*.y*ml' 2>/dev/null | head -1)" ]; then
-            echo "work=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Nothing to deploy yet::No Dockerfiles or kubernetes/ manifests in the repo, so AWS steps were skipped."
-          elif [ "$HAS_AWS" != "true" ]; then
-            echo "work=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=AWS not set up yet::Add the AWS secrets in repo settings to enable deploys. Skipping build, push and deploy."
-          else
-            echo "work=true" >> "$GITHUB_OUTPUT"
-          fi
+#       # Component folders are listed in .github/components.json.
+#       - id: scan
+#         env:
+#           HAS_AWS: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+#         run: |
+#           comps=$(bash .github/scripts/detect-components.sh Dockerfile)
+#           echo "components=$comps" >> "$GITHUB_OUTPUT"
+#           echo "Deployable components: $comps"
+#           if [ -n "$(find kubernetes -name '*.y*ml' 2>/dev/null | head -1)" ]; then
+#             echo "has_k8s=true" >> "$GITHUB_OUTPUT"
+#           else
+#             echo "has_k8s=false" >> "$GITHUB_OUTPUT"
+#           fi
+#           # Skip (green, with a note) instead of failing when there's nothing
+#           # to ship yet or AWS access hasn't been set up yet.
+#           if [ "$comps" = "[]" ] && ! [ -n "$(find kubernetes -name '*.y*ml' 2>/dev/null | head -1)" ]; then
+#             echo "work=false" >> "$GITHUB_OUTPUT"
+#             echo "::notice title=Nothing to deploy yet::No Dockerfiles or kubernetes/ manifests in the repo, so AWS steps were skipped."
+#           elif [ "$HAS_AWS" != "true" ]; then
+#             echo "work=false" >> "$GITHUB_OUTPUT"
+#             echo "::notice title=AWS not set up yet::Add the AWS secrets in repo settings to enable deploys. Skipping build, push and deploy."
+#           else
+#             echo "work=true" >> "$GITHUB_OUTPUT"
+#           fi
 
-      - uses: aws-actions/configure-aws-credentials@v6
-        if: steps.scan.outputs.work == 'true'
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ env.AWS_REGION }}
+#       - uses: aws-actions/configure-aws-credentials@v6
+#         if: steps.scan.outputs.work == 'true'
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+#           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Check lab credentials
-        if: steps.scan.outputs.work == 'true'
-        run: |
-          if ! aws sts get-caller-identity >/dev/null 2>&1; then
-            echo "::error title=AWS credentials not working::Check the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY repo secrets."
-            exit 1
-          fi
+#       - name: Check lab credentials
+#         if: steps.scan.outputs.work == 'true'
+#         run: |
+#           if ! aws sts get-caller-identity >/dev/null 2>&1; then
+#             echo "::error title=AWS credentials not working::Check the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY repo secrets."
+#             exit 1
+#           fi
 
-      - name: Check cluster is up
-        if: steps.scan.outputs.work == 'true'
-        run: |
-          status=$(aws eks describe-cluster --name "$CLUSTER_NAME" --query cluster.status --output text 2>/dev/null || echo MISSING)
-          if [ "$status" != "ACTIVE" ]; then
-            echo "::error title=Cluster not running::Cluster '$CLUSTER_NAME' is $status. Run the Infra workflow with action=apply first."
-            exit 1
-          fi
+#       - name: Check cluster is up
+#         if: steps.scan.outputs.work == 'true'
+#         run: |
+#           status=$(aws eks describe-cluster --name "$CLUSTER_NAME" --query cluster.status --output text 2>/dev/null || echo MISSING)
+#           if [ "$status" != "ACTIVE" ]; then
+#             echo "::error title=Cluster not running::Cluster '$CLUSTER_NAME' is $status. Run the Infra workflow with action=apply first."
+#             exit 1
+#           fi
 
-  build:
-    name: Build & push (${{ matrix.component.name }})
-    needs: preflight
-    if: needs.preflight.outputs.work == 'true' && needs.preflight.outputs.components != '[]'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: true
-      matrix:
-        component: ${{ fromJSON(needs.preflight.outputs.components) }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ env.SHA }}
+#   build:
+#     name: Build & push (${{ matrix.component.name }})
+#     needs: preflight
+#     if: needs.preflight.outputs.work == 'true' && needs.preflight.outputs.components != '[]'
+#     runs-on: ubuntu-latest
+#     strategy:
+#       fail-fast: true
+#       matrix:
+#         component: ${{ fromJSON(needs.preflight.outputs.components) }}
+#     steps:
+#       - uses: actions/checkout@v6
+#         with:
+#           ref: ${{ env.SHA }}
 
-      - uses: aws-actions/configure-aws-credentials@v6
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ env.AWS_REGION }}
+#       - uses: aws-actions/configure-aws-credentials@v6
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+#           aws-region: ${{ env.AWS_REGION }}
 
-      - id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
+#       - id: ecr
+#         uses: aws-actions/amazon-ecr-login@v2
 
-      - uses: docker/setup-buildx-action@v3
+#       - uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.component.path }}
-          platforms: linux/amd64 # t3 worker nodes are x86
-          push: true
-          tags: |
-            ${{ steps.ecr.outputs.registry }}/${{ matrix.component.ecr }}:${{ env.SHA }}
-            ${{ steps.ecr.outputs.registry }}/${{ matrix.component.ecr }}:latest
-          cache-from: type=gha,scope=${{ matrix.component.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.component.name }}
+#       - name: Build and push
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: ${{ matrix.component.path }}
+#           platforms: linux/amd64 # t3 worker nodes are x86
+#           push: true
+#           tags: |
+#             ${{ steps.ecr.outputs.registry }}/${{ matrix.component.ecr }}:${{ env.SHA }}
+#             ${{ steps.ecr.outputs.registry }}/${{ matrix.component.ecr }}:latest
+#           cache-from: type=gha,scope=${{ matrix.component.name }}
+#           cache-to: type=gha,mode=max,scope=${{ matrix.component.name }}
 
-  deploy:
-    name: Deploy to EKS
-    needs: [preflight, build]
-    # Runs after a successful build, or when there was nothing to build.
-    if: >-
-      always() &&
-      needs.preflight.result == 'success' &&
-      needs.preflight.outputs.work == 'true' &&
-      (needs.build.result == 'success' || needs.build.result == 'skipped') &&
-      needs.preflight.outputs.has_k8s == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ env.SHA }}
+#   deploy:
+#     name: Deploy to EKS
+#     needs: [preflight, build]
+#     # Runs after a successful build, or when there was nothing to build.
+#     if: >-
+#       always() &&
+#       needs.preflight.result == 'success' &&
+#       needs.preflight.outputs.work == 'true' &&
+#       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+#       needs.preflight.outputs.has_k8s == 'true'
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v6
+#         with:
+#           ref: ${{ env.SHA }}
 
-      - uses: aws-actions/configure-aws-credentials@v6
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ env.AWS_REGION }}
+#       - uses: aws-actions/configure-aws-credentials@v6
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+#           aws-region: ${{ env.AWS_REGION }}
 
-      - id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
+#       - id: ecr
+#         uses: aws-actions/amazon-ecr-login@v2
 
-      - uses: azure/setup-kubectl@v4
+#       - uses: azure/setup-kubectl@v4
 
-      - name: Connect kubectl to the cluster
-        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+#       - name: Connect kubectl to the cluster
+#         run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
 
-      # The manifests in kubernetes/ name a fixed image tag (e.g. ...-ecr-repo:v1).
-      # This copies them to rendered/ and points every image of a component
-      # built in this run at the exact commit's image. kubernetes/ is unchanged.
-      - name: Render manifests
-        env:
-          REGISTRY: ${{ steps.ecr.outputs.registry }}
-          BUILT: ${{ needs.preflight.outputs.components }}
-        run: |
-          rm -rf rendered && cp -r kubernetes rendered
-          for repo in $(jq -r '.[] | select(.ecr) | .ecr' <<<"$BUILT"); do
-            new="$REGISTRY/$repo:$SHA"
-            find rendered -name '*.y*ml' -exec \
-              sed -i -E "s#(image:[[:space:]]*)[^[:space:]\"']*/$repo:[^[:space:]\"']*#\1$new#" {} +
-            echo "Deploying $new"
-          done
-          grep -rhn "image:" rendered || true
+#       # The manifests in kubernetes/ name a fixed image tag (e.g. ...-ecr-repo:v1).
+#       # This copies them to rendered/ and points every image of a component
+#       # built in this run at the exact commit's image. kubernetes/ is unchanged.
+#       - name: Render manifests
+#         env:
+#           REGISTRY: ${{ steps.ecr.outputs.registry }}
+#           BUILT: ${{ needs.preflight.outputs.components }}
+#         run: |
+#           rm -rf rendered && cp -r kubernetes rendered
+#           for repo in $(jq -r '.[] | select(.ecr) | .ecr' <<<"$BUILT"); do
+#             new="$REGISTRY/$repo:$SHA"
+#             find rendered -name '*.y*ml' -exec \
+#               sed -i -E "s#(image:[[:space:]]*)[^[:space:]\"']*/$repo:[^[:space:]\"']*#\1$new#" {} +
+#             echo "Deploying $new"
+#           done
+#           grep -rhn "image:" rendered || true
 
-      - name: Apply
-        run: kubectl apply -R -f rendered/
+#       - name: Apply
+#         run: kubectl apply -R -f rendered/
 
-      - name: Wait for healthy rollout (auto-rollback on failure)
-        run: |
-          failed=0
-          for d in $(kubectl get deployments -n "$NAMESPACE" -o name); do
-            echo "::group::Rollout $d"
-            if ! kubectl rollout status "$d" -n "$NAMESPACE" --timeout=180s; then
-              echo "::error title=Rollout failed::$d did not become healthy. Rolling back."
-              kubectl describe "$d" -n "$NAMESPACE" | tail -n 30
-              kubectl get pods -n "$NAMESPACE" -o wide
-              kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp | tail -n 20
-              kubectl rollout undo "$d" -n "$NAMESPACE"
-              failed=1
-            fi
-            echo "::endgroup::"
-          done
-          exit $failed
+#       - name: Wait for healthy rollout (auto-rollback on failure)
+#         run: |
+#           failed=0
+#           for d in $(kubectl get deployments -n "$NAMESPACE" -o name); do
+#             echo "::group::Rollout $d"
+#             if ! kubectl rollout status "$d" -n "$NAMESPACE" --timeout=180s; then
+#               echo "::error title=Rollout failed::$d did not become healthy. Rolling back."
+#               kubectl describe "$d" -n "$NAMESPACE" | tail -n 30
+#               kubectl get pods -n "$NAMESPACE" -o wide
+#               kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp | tail -n 20
+#               kubectl rollout undo "$d" -n "$NAMESPACE"
+#               failed=1
+#             fi
+#             echo "::endgroup::"
+#           done
+#           exit $failed
 
-      - name: Summary
-        if: always()
-        run: |
-          {
-            echo "### Deploy \`${SHA::7}\` to \`$CLUSTER_NAME\`"
-            echo '```'
-            kubectl get deployments,pods,svc -n "$NAMESPACE" -o wide 2>&1 || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+#       - name: Summary
+#         if: always()
+#         run: |
+#           {
+#             echo "### Deploy \`${SHA::7}\` to \`$CLUSTER_NAME\`"
+#             echo '```'
+#             kubectl get deployments,pods,svc -n "$NAMESPACE" -o wide 2>&1 || true
+#             echo '```'
+#           } >> "$GITHUB_STEP_SUMMARY"

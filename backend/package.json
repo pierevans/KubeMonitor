@@ -14,6 +14,7 @@
   "type": "module",
   "dependencies": {
     "@aws-sdk/client-cloudwatch": "^3.1161.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1167.0",
     "@kubernetes/client-node": "^2.0.1",
     "cors": "^2.8.6",
     "express": "^5.3.0",

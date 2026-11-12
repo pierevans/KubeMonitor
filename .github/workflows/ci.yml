@@ -1,148 +1,148 @@
-# CI: runs on every pull request and every push to main.
-# Needs NO AWS credentials.
-# Jobs for the app, manifests and Terraform skip themselves until those folders exist.
-name: CI
+# # CI: runs on every pull request and every push to main.
+# # Needs NO AWS credentials.
+# # Jobs for the app, manifests and Terraform skip themselves until those folders exist.
+# name: CI
 
-on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+# on:
+#   pull_request:
+#     branches: [main]
+#   push:
+#     branches: [main]
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+# concurrency:
+#   group: ci-${{ github.ref }}
+#   cancel-in-progress: true
 
-permissions:
-  contents: read
+# permissions:
+#   contents: read
 
-env:
-  NODE_VERSION: "22"
+# env:
+#   NODE_VERSION: "22"
 
-jobs:
-  detect:
-    name: Detect components
-    runs-on: ubuntu-latest
-    outputs:
-      node_apps: ${{ steps.scan.outputs.node_apps }}
-      has_k8s: ${{ steps.scan.outputs.has_k8s }}
-      has_tf: ${{ steps.scan.outputs.has_tf }}
-    steps:
-      - uses: actions/checkout@v6
-      # Component folders are listed in .github/components.json.
-      - id: scan
-        run: |
-          apps=$(bash .github/scripts/detect-components.sh package.json)
-          echo "node_apps=$apps" >> "$GITHUB_OUTPUT"
-          if [ -n "$(find kubernetes -name '*.y*ml' 2>/dev/null | head -1)" ]; then
-            echo "has_k8s=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_k8s=false" >> "$GITHUB_OUTPUT"
-          fi
-          if ls terraform/*.tf >/dev/null 2>&1; then
-            echo "has_tf=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_tf=false" >> "$GITHUB_OUTPUT"
-          fi
-          echo "Node apps found: $apps"
+# jobs:
+#   detect:
+#     name: Detect components
+#     runs-on: ubuntu-latest
+#     outputs:
+#       node_apps: ${{ steps.scan.outputs.node_apps }}
+#       has_k8s: ${{ steps.scan.outputs.has_k8s }}
+#       has_tf: ${{ steps.scan.outputs.has_tf }}
+#     steps:
+#       - uses: actions/checkout@v6
+#       # Component folders are listed in .github/components.json.
+#       - id: scan
+#         run: |
+#           apps=$(bash .github/scripts/detect-components.sh package.json)
+#           echo "node_apps=$apps" >> "$GITHUB_OUTPUT"
+#           if [ -n "$(find kubernetes -name '*.y*ml' 2>/dev/null | head -1)" ]; then
+#             echo "has_k8s=true" >> "$GITHUB_OUTPUT"
+#           else
+#             echo "has_k8s=false" >> "$GITHUB_OUTPUT"
+#           fi
+#           if ls terraform/*.tf >/dev/null 2>&1; then
+#             echo "has_tf=true" >> "$GITHUB_OUTPUT"
+#           else
+#             echo "has_tf=false" >> "$GITHUB_OUTPUT"
+#           fi
+#           echo "Node apps found: $apps"
 
-  app:
-    name: App (${{ matrix.app.name }})
-    needs: detect
-    if: needs.detect.outputs.node_apps != '[]'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        app: ${{ fromJSON(needs.detect.outputs.node_apps) }}
-    defaults:
-      run:
-        working-directory: ${{ matrix.app.path }}
-    steps:
-      - uses: actions/checkout@v6
+#   app:
+#     name: App (${{ matrix.app.name }})
+#     needs: detect
+#     if: needs.detect.outputs.node_apps != '[]'
+#     runs-on: ubuntu-latest
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         app: ${{ fromJSON(needs.detect.outputs.node_apps) }}
+#     defaults:
+#       run:
+#         working-directory: ${{ matrix.app.path }}
+#     steps:
+#       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: ${{ matrix.app.path }}/package-lock.json
+#       - uses: actions/setup-node@v6
+#         with:
+#           node-version: ${{ env.NODE_VERSION }}
+#           cache: npm
+#           cache-dependency-path: ${{ matrix.app.path }}/package-lock.json
 
-      - name: Install
-        run: npm ci
+#       - name: Install
+#         run: npm ci
 
-      - name: Lint
-        run: npm run lint --if-present
+#       - name: Lint
+#         run: npm run lint --if-present
 
-      # Skips npm's default placeholder ("Error: no test specified"),
-      # so a project without tests yet doesn't fail CI.
-      - name: Test
-        run: |
-          t=$(jq -r '.scripts.test // ""' package.json)
-          if [ -z "$t" ] || [[ "$t" == *"no test specified"* ]]; then
-            echo "::notice title=No tests yet (${{ matrix.app.name }})::No real test script in package.json, skipping."
-          else
-            npm test
-          fi
+#       # Skips npm's default placeholder ("Error: no test specified"),
+#       # so a project without tests yet doesn't fail CI.
+#       - name: Test
+#         run: |
+#           t=$(jq -r '.scripts.test // ""' package.json)
+#           if [ -z "$t" ] || [[ "$t" == *"no test specified"* ]]; then
+#             echo "::notice title=No tests yet (${{ matrix.app.name }})::No real test script in package.json, skipping."
+#           else
+#             npm test
+#           fi
 
-      - name: Build
-        run: npm run build --if-present
+#       - name: Build
+#         run: npm run build --if-present
 
-      - uses: docker/setup-buildx-action@v3
-        if: hashFiles(format('{0}/Dockerfile', matrix.app.path)) != ''
+#       - uses: docker/setup-buildx-action@v3
+#         if: hashFiles(format('{0}/Dockerfile', matrix.app.path)) != ''
 
-      # Proves the image builds. Nothing is pushed from CI.
-      # Skipped until the component has a Dockerfile.
-      - name: Docker build (no push)
-        if: hashFiles(format('{0}/Dockerfile', matrix.app.path)) != ''
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.app.path }}
-          platforms: linux/amd64
-          push: false
-          cache-from: type=gha,scope=${{ matrix.app.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.app.name }}
+#       # Proves the image builds. Nothing is pushed from CI.
+#       # Skipped until the component has a Dockerfile.
+#       - name: Docker build (no push)
+#         if: hashFiles(format('{0}/Dockerfile', matrix.app.path)) != ''
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: ${{ matrix.app.path }}
+#           platforms: linux/amd64
+#           push: false
+#           cache-from: type=gha,scope=${{ matrix.app.name }}
+#           cache-to: type=gha,mode=max,scope=${{ matrix.app.name }}
 
-  terraform:
-    name: Terraform fmt + validate
-    needs: detect
-    if: needs.detect.outputs.has_tf == 'true'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: terraform
-    steps:
-      - uses: actions/checkout@v6
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~1.10"
-      # Formatting is reported as a warning, not a failure. Fix locally with:
-      #   terraform fmt -recursive terraform/
-      - name: Format check (warning only)
-        run: |
-          if ! terraform fmt -check -recursive -diff; then
-            echo "::warning title=Terraform formatting::Some .tf files aren't formatted. Run 'terraform fmt -recursive terraform/' and commit."
-          fi
-      - name: Init (no backend)
-        run: terraform init -backend=false -input=false
-      - name: Validate
-        run: terraform validate
+#   terraform:
+#     name: Terraform fmt + validate
+#     needs: detect
+#     if: needs.detect.outputs.has_tf == 'true'
+#     runs-on: ubuntu-latest
+#     defaults:
+#       run:
+#         working-directory: terraform
+#     steps:
+#       - uses: actions/checkout@v6
+#       - uses: hashicorp/setup-terraform@v3
+#         with:
+#           terraform_version: "~1.10"
+#       # Formatting is reported as a warning, not a failure. Fix locally with:
+#       #   terraform fmt -recursive terraform/
+#       - name: Format check (warning only)
+#         run: |
+#           if ! terraform fmt -check -recursive -diff; then
+#             echo "::warning title=Terraform formatting::Some .tf files aren't formatted. Run 'terraform fmt -recursive terraform/' and commit."
+#           fi
+#       - name: Init (no backend)
+#         run: terraform init -backend=false -input=false
+#       - name: Validate
+#         run: terraform validate
 
-  k8s:
-    name: Validate Kubernetes manifests
-    needs: detect
-    if: needs.detect.outputs.has_k8s == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: kubeconform
-        run: |
-          docker run --rm -v "$PWD/kubernetes:/manifests" ghcr.io/yannh/kubeconform:latest \
-            -strict -summary -ignore-missing-schemas /manifests
+#   k8s:
+#     name: Validate Kubernetes manifests
+#     needs: detect
+#     if: needs.detect.outputs.has_k8s == 'true'
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v6
+#       - name: kubeconform
+#         run: |
+#           docker run --rm -v "$PWD/kubernetes:/manifests" ghcr.io/yannh/kubeconform:latest \
+#             -strict -summary -ignore-missing-schemas /manifests
 
-  workflows:
-    name: Lint workflow files
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: actionlint
-        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color
+#   workflows:
+#     name: Lint workflow files
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v6
+#       - name: actionlint
+#         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color

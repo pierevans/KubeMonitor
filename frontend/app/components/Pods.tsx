@@ -105,7 +105,7 @@ const Pods = ({ pods = [] }: { pods?: Pod[] }) => {
 
               {/* CPU */}
               <div className="basis-2/15 text-gray-700">
-                {pod.cpu !== null ? `${pod.cpu}m` : "N/A"}
+                {pod.cpu !== null ? `${pod.cpu} mCPU` : "N/A"}
               </div>
 
               {/* AGE */}

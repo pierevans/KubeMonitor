@@ -4,13 +4,13 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { MdOutlineDashboard } from "react-icons/md";
 import { LiaCubesSolid } from "react-icons/lia";
-import { MdOutlineMonitorHeart } from "react-icons/md";
 import { FaCodeBranch } from "react-icons/fa";
 import { IoRocketOutline } from "react-icons/io5";
 import { FaRegFileLines } from "react-icons/fa6";
 import { BsCpu } from "react-icons/bs";
 import { RiFlashlightLine } from "react-icons/ri";
 import { MdOutlineCancel } from "react-icons/md";
+import { BsMemory } from "react-icons/bs";
 import { LuShieldCheck } from "react-icons/lu";
 import { LuShieldAlert } from "react-icons/lu";
 
@@ -34,24 +34,86 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [simulating, setSimulating] = useState(false);
 
-  const allHealthy = data?.allHealthy ?? false;
-  const nodes = data?.nodes ?? null;
-  const pods = data?.pods ?? null;
-  const nodeCPU = data?.nodeCPU ?? 0;
-const networkReceived = data?.cloudwatch?.networkReceived?.value;
-const networkTransmitted = data?.cloudwatch?.networkTransmitted?.value;
-  const networkMB =
-    networkReceived != null && networkTransmitted != null
-      ? (networkReceived + networkTransmitted) / (1024 * 1024)
-      : null;
+  // Worker Nodes
+  const nodesReady = data?.kubernetes?.nodes?.ready;
+  const nodesTotal = data?.kubernetes?.nodes?.total;
+  const workerNodes =
+    nodesReady != null && nodesTotal != null
+      ? `${nodesReady} / ${nodesTotal}`
+      : "N/A";
 
-  const networkTraffic =
-    networkMB === null ? "N/A" : `${networkMB.toFixed(2)} MB`;
-  const deploymentHealthy = data?.deploymentHealthy ?? false;
-  const desiredReplicas = data?.desiredReplicas ?? 0;
-  const readyReplicas = data?.readyReplicas ?? 0;
-  const availableReplicas = data?.availableReplicas ?? 0;
+  // Pods
+  const podsReady = data?.kubernetes?.pods?.ready;
+  const podsTotal = data?.kubernetes?.pods?.total;
+  const runningPods =
+    podsReady != null && podsTotal != null
+      ? `${podsReady} / ${podsTotal}`
+      : "N/A";
 
+  // function to determine the status of a metric based on thresholds
+  const getMetricStatus = (
+    value: number | null | undefined,
+    warning: number,
+    danger: number,
+  ): "green" | "yellow" | "red" | "gray" => {
+    if (value == null || !Number.isFinite(value)) return "gray";
+
+    if (value >= danger) return "red";
+    if (value >= warning) return "yellow";
+
+    return "green";
+  };
+
+  // CPU Usage (%)
+  const nodeCPU = data?.cloudwatch?.nodeCPU?.value;
+
+  const cpuUsage =
+    nodeCPU != null && Number.isFinite(nodeCPU)
+      ? `${nodeCPU.toFixed(1)}%`
+      : "N/A";
+
+  const cpuStatus = getMetricStatus(nodeCPU, 30, 60);
+
+  // Node Memory Usage (%)
+  const nodeMemory = data?.cloudwatch?.nodeMemory?.value;
+  const memoryUsage =
+    nodeMemory != null && Number.isFinite(nodeMemory)
+      ? `${nodeMemory.toFixed(1)}%`
+      : "N/A";
+
+  const memoryStatus = getMetricStatus(nodeMemory, 60, 80);
+
+  // Deployment Health
+  const deployments = data?.kubernetes?.deployments;
+
+  const totalDeployments = deployments?.length ?? 0;
+
+  const readyDeployments =
+    deployments?.filter(
+      (deployment: { desired: number; ready: number; available: number }) =>
+        deployment.desired > 0 &&
+        deployment.ready === deployment.desired &&
+        deployment.available === deployment.desired,
+    ).length ?? 0;
+
+  const deploymentHealth =
+    totalDeployments > 0 ? `${readyDeployments} / ${totalDeployments}` : "N/A";
+
+  const deploymentStatus =
+    totalDeployments === 0
+      ? "gray"
+      : readyDeployments === totalDeployments
+        ? "green"
+        : "red";
+
+// Determine if all systems are healthy
+  const allHealthy =
+  nodesTotal > 0 &&
+  nodesReady === nodesTotal &&
+  podsTotal > 0 &&
+  podsReady === podsTotal &&
+  totalDeployments > 0 &&
+  readyDeployments === totalDeployments;      
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -74,7 +136,7 @@ const networkTransmitted = data?.cloudwatch?.networkTransmitted?.value;
 
     fetchData();
 
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, 1000);
 
     return () => clearInterval(interval);
   }, []);
@@ -128,19 +190,6 @@ const networkTransmitted = data?.cloudwatch?.networkTransmitted?.value;
     }
   };
 
-  const getMetricStatus = (
-    value: number | null | undefined,
-    warning: number,
-    danger: number,
-  ): "green" | "yellow" | "red" | "gray" => {
-    if (value == null || !Number.isFinite(value)) return "gray";
-
-    if (value >= danger) return "red";
-    if (value >= warning) return "yellow";
-
-    return "green";
-  };
-
   return (
     <div className="flex-center bg-gray-200 h-full">
       <div className="w-225 h-auto rounded-3xl bg-[#F3F6F8] my-10 border border-gray-300 shadow-lg">
@@ -169,10 +218,10 @@ const networkTransmitted = data?.cloudwatch?.networkTransmitted?.value;
               <span>Overview</span>
             </a>
 
-            <a href="#monitoring" className="flex items-center gap-2">
+            {/* <a href="#monitoring" className="flex items-center gap-2">
               <MdOutlineMonitorHeart />
               <span>Monitoring</span>
-            </a>
+            </a> */}
 
             <a href="#pods" className="flex items-center gap-2">
               <LiaCubesSolid />
@@ -272,24 +321,23 @@ const networkTransmitted = data?.cloudwatch?.networkTransmitted?.value;
               </p>
             )}
 
-            {/* OVERVIEW CARDS */}
 
             {/* OVERVIEW CARDS */}
             <div className="flex flex-wrap items-center gap-5 mt-10">
               {/* Cluster Health */}
               <OverviewCard
-                title="Cluster Health"
-                icon={allHealthy ? <LuShieldCheck /> : <LuShieldAlert />}
-                result={!data ? "N/A" : allHealthy ? "Healthy" : "Degraded"}
-                description="Nodes, deployments and alarms"
-                status={!data ? "gray" : allHealthy ? "green" : "red"}
-              />
+  title="Cluster Health"
+  icon={allHealthy ? <LuShieldCheck /> : <LuShieldAlert />}
+  result={!data ? "N/A" : allHealthy ? "Healthy" : "Degraded"}
+  description="Nodes, Pods and Deployments"
+  status={!data ? "gray" : allHealthy ? "green" : "red"}
+/>
 
               {/* Worker Nodes */}
               <OverviewCard
                 title="Worker Nodes"
                 icon={<TbServer />}
-                result={nodes ? `${nodes.ready} / ${nodes.total}` : "N/A"}
+                result={workerNodes}
                 description="Nodes ready"
                 status="blue"
               />
@@ -298,12 +346,8 @@ const networkTransmitted = data?.cloudwatch?.networkTransmitted?.value;
               <OverviewCard
                 title="Running Pods"
                 icon={<BiCube />}
-                result={data ? `${readyReplicas} / ${desiredReplicas}` : "N/A"}
-                description={
-                  pods
-                    ? `${pods.running} running phase, ${pods.restarts} restarts`
-                    : "Desired replicas ready"
-                }
+                result={runningPods}
+                description="Desired replicas ready"
                 status="blue"
               />
 
@@ -311,54 +355,38 @@ const networkTransmitted = data?.cloudwatch?.networkTransmitted?.value;
               <OverviewCard
                 title="CPU Usage"
                 icon={<BsCpu />}
-                result={formatPercent(nodeCPU)}
+                result={cpuUsage}
                 description="EKS worker node CPU"
-                status={getMetricStatus(nodeCPU?.value, 60, 80)}
+                status={cpuStatus}
               />
 
-              {/* Network Traffic */}
+              {/* Node Memory */}
               <OverviewCard
-                title="Network Traffic"
-                icon={<RiNetworkLine />}
-                result={networkTraffic}
-                description="Inbound + outbound metric total"
-                status={getMetricStatus(networkMB, 5, 20)}
+                title="Node Memory"
+                icon={<BsMemory />}
+                result={memoryUsage}
+                description="EKS worker node memory"
+                status={memoryStatus}
               />
 
               {/* Deployment Health */}
               <OverviewCard
                 title="Deployment Health"
-                icon={
-                  deploymentHealthy ? (
-                    <MdOutlineCheckCircle />
-                  ) : (
-                    <MdOutlineCancel />
-                  )
-                }
-                result={
-                  !data ? "N/A" : deploymentHealthy ? "Ready" : "Not Ready"
-                }
-                description={
-                  data
-                    ? `${availableReplicas} / ${desiredReplicas} replicas available`
-                    : "Waiting for deployment data"
-                }
-                status={!data ? "gray" : deploymentHealthy ? "green" : "red"}
+                icon={<FaCodeBranch />}              
+                result={deploymentHealth}                
+                description="Desired replicas ready"
+                status={deploymentStatus}
               />
             </div>
 
             {/* EXISTING DASHBOARD COMPONENTS */}
-            <div id="monitoring">
-              <Monitor />
-            </div>
+            <div id="monitoring">{/* <Monitor /> */}</div>
 
             <div id="pods">
               <Pods pods={data?.kubernetes?.pods?.details ?? []} />
             </div>
 
-            <div id="cicd">
-              <Branches />
-            </div>
+            <div id="cicd">{/* <Branches /> */}</div>
 
             <div id="events">
               <Events />
